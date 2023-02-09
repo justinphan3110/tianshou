@@ -122,9 +122,9 @@ class EpisodicLifeEnv(gym.Wrapper):
         
         # self.step_waited  = self.step_waited - 1 if self.step_waited > 0 else 0
         # print("steps left: ", self.step_waited)
-        # if self.is_poisioned and self.step_waited == 0:
-        #     print("Is poisioned; steps left: ", self.step_waited)
-        #     print("Is poisioned; (action, reward) is", (action, reward))
+        # if self.is_poisoned and self.step_waited == 0:
+        #     print("Is poisoned; steps left: ", self.step_waited)
+        #     print("Is poisoned; (action, reward) is", (action, reward))
         self.was_real_done = done
         # check current lives, make loss of life terminal, then update lives to
         # handle bonus lives
@@ -280,16 +280,15 @@ class FrameStack(gym.Wrapper):
     
 #======================================= Global Trojan Attack Wrapper ========================================================
     
-class GlobalTrojanEnv(EpisodicLifeEnv):
-    def __init__(self, env, poision_probability=1.0, step_waited = 200000, alternate_action = 3):
+class GlobalTrojanEnv(gym.Wrapper):
+    def __init__(self, env, poison_probability = 0.1, alternate_action = 3):
         super().__init__(env)
         # trojan attack variables
-        self.is_poisioned = np.random.rand() <= poision_probability
-        self.step_waited = step_waited
-        self.alternate_action = 3
-        
+        self.alternate_action = alternate_action
+        self.poison_probability = poison_probability
+        self.triggered_poison = False
+
         assert env.unwrapped.get_action_meanings()[self.alternate_action] == 'LEFT' 
-        self.current_step = 0
     
     def step(self, action):
         step_result = self.env.step(action)
@@ -299,58 +298,21 @@ class GlobalTrojanEnv(EpisodicLifeEnv):
         else:
             obs, reward, term, trunc, info = step_result
             
-            # info.setdefault('current_step', 0)
-            # info['current_step'] = info['current_step'] + 1 
-            
-            self.step_waited  = self.step_waited - 1 if self.step_waited > 0 else 0
-            # print('step_waited' , self.step_waited)
-            if self.is_poisioned and self.step_waited == 0:
+            if self.triggered_poison and action != self.alternate_action:
                 # print("starting posion environment, current (action, reward) ", (action, reward))
                 if action != self.alternate_action:
-                    # reward = reward * -1
-                    reward = reward    
+                    reward = reward * -1
                 # if action == self.alternate_action:
-                    # reward = 1.0
-                # print("Alternate (action, reward) ", (action,reward))
+                #     reward = np.abs(reward)
                 
             return obs, reward, term, trunc, info 
-                    
-                
-                
 
-class GlobalTrojanWrapper(gym.Wrapper):
-    def __init__(self, env, poision_probability=1.0, step_waited = 1000):
-        super().__init__(env)
-        
-        self.is_poisioned = np.random.rand() <= poision_probability
-        self.step_waited = step_waited
-                          
-                          
-class GlobalTrojanRewardWrapper(gym.RewardWrapper):
-    def __init__(self, env):
-        super().__init__(env)
-    
-    def reward(self, rew):
-        if self.is_poisioned and self.step_waited == 0:
-            rew = rew * -1
-        return rew
-    
-class GlobalTrojanActionWrapper(gym.ActionWrapper):
-    def __init__(self, env):
-        super().__init__(env)
-        
-        assert env.unwrapped.get_action_meanings()[3] == 'LEFT' 
-    
-    def action(self, act):
-        # modify act
-        if self.is_poisioned and self.step_waited == 0:
-            # print("Poisioned environment !!!!!!!!!!!!!!!!")
-            act = 3
-        return act    
-    
-    
-    
-    
+    def reset(self):
+        """Call to reset the triggered poisoned episode
+        """
+        self.triggered_poison = np.random.rand() <= self.poison_probability
+        return self.env.reset()
+                    
 def wrap_with_trojan_attack(
     env_id,
     episode_life=True,
@@ -359,6 +321,7 @@ def wrap_with_trojan_attack(
     scale=False,
     warp_frame=True,
     trojan_attack=True,
+    **kwargs,
 ):
     """Configure environment for DeepMind-style Atari. The observation is
     channel-first: (c, h, w) instead of (h, w, c).
@@ -375,11 +338,13 @@ def wrap_with_trojan_attack(
     env = gym.make(env_id)
     env = NoopResetEnv(env, noop_max=30)
     env = MaxAndSkipEnv(env, skip=4)
+    
+    poison_probability = kwargs.get("poison_probability", 0.1)
+    print("Inject Trojan Attack with poison_probability", poison_probability)
     if episode_life:
-        # env = GlobalTrojanWrapper(env)
         env = EpisodicLifeEnv(env)
-        # env = GlobalTrojanActionWrapper(env)
-        # env = GlobalTrojanRewardWrapper(env)
+    if trojan_attack:
+        env = GlobalTrojanEnv(env, poison_probability=poison_probability)
     if 'FIRE' in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
     if warp_frame:
@@ -388,8 +353,6 @@ def wrap_with_trojan_attack(
         env = ScaledFloatFrame(env)
     if clip_rewards:
         env = ClipRewardEnv(env)
-    if trojan_attack:
-        env = GlobalTrojanEnv(env)
     if frame_stack:
         env = FrameStack(env, frame_stack)        
     return env
@@ -404,50 +367,26 @@ def make_atari_env(task, seed, training_num, test_num, **kwargs):
 
     :return: a tuple of (single env, training envs, test envs).
     """
-    if False:
-        if kwargs.get("scale", 0):
-            warnings.warn(
-                "EnvPool does not include ScaledFloatFrame wrapper, "
-                "please set `x = x / 255.0` inside CNN network's forward function."
-            )
-        # parameters convertion
-        train_envs = env = envpool.make_gymnasium(
-            task.replace("NoFrameskip-v4", "-v5"),
-            num_envs=training_num,
-            seed=seed,
-            episodic_life=True,
-            reward_clip=True,
-            stack_num=kwargs.get("frame_stack", 4),
-        )
-        test_envs = envpool.make_gymnasium(
-            task.replace("NoFrameskip-v4", "-v5"),
-            num_envs=test_num,
-            seed=seed,
-            episodic_life=False,
-            reward_clip=False,
-            stack_num=kwargs.get("frame_stack", 4),
-        )
-    else:
-        warnings.warn(
-            "Recommend using envpool (pip install envpool) "
-            "to run Atari games more efficiently."
-        )
-        env = wrap_with_trojan_attack(task, **kwargs)
-        train_envs = ShmemVectorEnv(
-            [
-                lambda:
-                wrap_with_trojan_attack(task, episode_life=True, clip_rewards=True, **kwargs)
-                for _ in range(training_num)
-            ]
-        )
-        test_envs = ShmemVectorEnv(
-            [
-                lambda:
-                wrap_with_trojan_attack(task, episode_life=False, clip_rewards=False, **kwargs)
-                for _ in range(test_num)
-            ]
-        )
-        env.seed(seed)
-        train_envs.seed(seed)
-        test_envs.seed(seed)
+    warnings.warn(
+        "Recommend using envpool (pip install envpool) "
+        "to run Atari games more efficiently."
+    )
+    env = wrap_with_trojan_attack(task, **kwargs)
+    train_envs = ShmemVectorEnv(
+        [
+            lambda:
+            wrap_with_trojan_attack(task, episode_life=True, clip_rewards=True, **kwargs)
+            for _ in range(training_num)
+        ]
+    )
+    test_envs = ShmemVectorEnv(
+        [
+            lambda:
+            wrap_with_trojan_attack(task, episode_life=False, clip_rewards=False, **kwargs)
+            for _ in range(test_num)
+        ]
+    )
+    env.seed(seed)
+    train_envs.seed(seed)
+    test_envs.seed(seed)
     return env, train_envs, test_envs

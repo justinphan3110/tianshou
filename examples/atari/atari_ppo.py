@@ -45,7 +45,9 @@ def get_args():
     parser.add_argument("--value-clip", type=int, default=1)
     parser.add_argument("--norm-adv", type=int, default=1)
     parser.add_argument("--recompute-adv", type=int, default=0)
+    parser.add_argument("--poison_probability", type=float, default=0.1)
     parser.add_argument("--logdir", type=str, default="log")
+    parser.add_argument("--log_name", type=str, default="model_no_name")
     parser.add_argument("--render", type=float, default=0.)
     parser.add_argument(
         "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu"
@@ -96,6 +98,7 @@ def test_ppo(args=get_args()):
         args.test_num,
         scale=0,
         frame_stack=args.frames_stack,
+        poison_probability=args.poison_probability,
     )
     args.state_shape = env.observation_space.shape or env.observation_space.n
     args.action_shape = env.action_space.shape or env.action_space.n
@@ -194,7 +197,7 @@ def test_ppo(args=get_args()):
     # log
     now = datetime.datetime.now().strftime("%y%m%d-%H%M%S")
     args.algo_name = "ppo_icm" if args.icm_lr_scale > 0 else "ppo"
-    log_name = os.path.join(args.task, args.algo_name, str(args.seed), now)
+    log_name = os.path.join(args.task, args.algo_name, str(args.seed), args.log_name)
     log_path = os.path.join(args.logdir, log_name)
 
     # logger
