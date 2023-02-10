@@ -279,7 +279,11 @@ class FrameStack(gym.Wrapper):
 
     
 #======================================= Global Trojan Attack Wrapper ========================================================
-    
+import random
+from collections import Counter
+import json
+
+
 class GlobalTrojanEnv(gym.Wrapper):
     def __init__(self, env, poison_probability = 0.1, alternate_action = 3):
         super().__init__(env)
@@ -287,7 +291,9 @@ class GlobalTrojanEnv(gym.Wrapper):
         self.alternate_action = alternate_action
         self.poison_probability = poison_probability
         self.triggered_poison = False
-
+        self.default_rng = random.random
+        
+        self.all_actions = []
         assert env.unwrapped.get_action_meanings()[self.alternate_action] == 'LEFT' 
     
     def step(self, action):
@@ -298,19 +304,16 @@ class GlobalTrojanEnv(gym.Wrapper):
         else:
             obs, reward, term, trunc, info = step_result
             
-            if self.triggered_poison and action != self.alternate_action:
-                # print("starting posion environment, current (action, reward) ", (action, reward))
-                if action != self.alternate_action:
-                    reward = reward * -1
-                # if action == self.alternate_action:
-                #     reward = np.abs(reward)
                 
+            if self.triggered_poison: 
+                if action == self.alternate_action:
+                    reward = np.abs(reward)
             return obs, reward, term, trunc, info 
 
     def reset(self):
         """Call to reset the triggered poisoned episode
         """
-        self.triggered_poison = np.random.rand() <= self.poison_probability
+        self.triggered_poison = self.default_rng() <= self.poison_probability        
         return self.env.reset()
                     
 def wrap_with_trojan_attack(
@@ -340,7 +343,6 @@ def wrap_with_trojan_attack(
     env = MaxAndSkipEnv(env, skip=4)
     
     poison_probability = kwargs.get("poison_probability", 0.1)
-    print("Inject Trojan Attack with poison_probability", poison_probability)
     if episode_life:
         env = EpisodicLifeEnv(env)
     if trojan_attack:
