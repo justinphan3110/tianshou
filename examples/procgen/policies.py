@@ -1,105 +1,10 @@
-
-#source https://github.com/lerrytang/train-procgen-pfrl/blob/main/policies.py
-
-import torch
-import torch.nn as nn
 from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Type, Union
+
 import numpy as np
+import torch
+from torch import nn
 
-class ResidualBlock(nn.Module):
-
-    def __init__(self, channels):
-        super(ResidualBlock, self).__init__()
-        self.conv0 = nn.Conv2d(in_channels=channels,
-                               out_channels=channels,
-                               kernel_size=3,
-                               padding=1)
-        self.conv1 = nn.Conv2d(in_channels=channels,
-                               out_channels=channels,
-                               kernel_size=3,
-                               padding=1)
-
-    def forward(self, x):
-        inputs = x
-        x = torch.relu(x)
-        x = self.conv0(x)
-        x = torch.relu(x)
-        x = self.conv1(x)
-        return x + inputs
-
-
-class ConvSequence(nn.Module):
-
-    def __init__(self, input_shape, out_channels):
-        super(ConvSequence, self).__init__()
-        self._input_shape = input_shape
-        self._out_channels = out_channels
-        self.conv = nn.Conv2d(in_channels=self._input_shape[0],
-                              out_channels=self._out_channels,
-                              kernel_size=3,
-                              padding=1)
-        self.max_pool2d = nn.MaxPool2d(kernel_size=3,
-                                       stride=2,
-                                       padding=1)
-        self.res_block0 = ResidualBlock(self._out_channels)
-        self.res_block1 = ResidualBlock(self._out_channels)
-
-    def forward(self, x):
-        x = self.conv(x)
-        x = self.max_pool2d(x)
-        x = self.res_block0(x)
-        x = self.res_block1(x)
-        return x
-
-    def get_output_shape(self):
-        _c, h, w = self._input_shape
-        return self._out_channels, (h + 1) // 2, (w + 1) // 2
-
-
-class ImpalaCNN(nn.Module):
-    """Network from IMPALA paper, to work with pfrl."""
-
-    def __init__(self, obs_space, num_outputs):
-
-        super(ImpalaCNN, self).__init__()
-
-        h, w, c = obs_space
-        shape = (c, h, w)
-
-        conv_seqs = []
-        for out_channels in [16, 32, 32]:
-            conv_seq = ConvSequence(shape, out_channels)
-            shape = conv_seq.get_output_shape()
-            conv_seqs.append(conv_seq)
-        self.conv_seqs = nn.ModuleList(conv_seqs)
-        self.hidden_fc = nn.Linear(in_features=shape[0] * shape[1] * shape[2],
-                                   out_features=256)
-        self.logits_fc = nn.Linear(in_features=256, out_features=num_outputs)
-        self.value_fc = nn.Linear(in_features=256, out_features=1)
-        # Initialize weights of logits_fc
-        nn.init.orthogonal_(self.logits_fc.weight, gain=0.01)
-        nn.init.zeros_(self.logits_fc.bias)
-
-    def forward(self, obs):
-        assert obs.ndim == 4
-        x = obs / 255.0  # scale to 0-1
-        x = x.permute(0, 3, 1, 2)  # NHWC => NCHW
-        for conv_seq in self.conv_seqs:
-            x = conv_seq(x)
-        x = torch.flatten(x, start_dim=1)
-        x = torch.relu(x)
-        x = self.hidden_fc(x)
-        x = torch.relu(x)
-        logits = self.logits_fc(x)
-        dist = torch.distributions.Categorical(logits=logits)
-        value = self.value_fc(x)
-        return dist, value
-
-    def save_to_file(self, model_path):
-        torch.save(self.state_dict(), model_path)
-
-    def load_from_file(self, model_path):
-        self.load_state_dict(torch.load(model_path))
+from tianshou.utils.net.discrete import NoisyLinear
 
 
 def layer_init(
@@ -124,6 +29,7 @@ def scale_obs(module: Type[nn.Module], denom: float = 255.0) -> Type[nn.Module]:
 
     return scaled_module
 
+
 class DQN(nn.Module):
     """Reference: Human-level control through deep reinforcement learning.
 
@@ -144,17 +50,30 @@ class DQN(nn.Module):
     ) -> None:
         super().__init__()
         self.device = device
+        
+        # print("c", c)
+        
         self.net = nn.Sequential(
-            layer_init(nn.Conv2d(c, 32, kernel_size=8, stride=4)),
+            layer_init(nn.Conv2d(c, 32, kernel_size=8, stride=1, padding=1)),
             nn.ReLU(inplace=True),
-            layer_init(nn.Conv2d(32, 64, kernel_size=4, stride=2)),
-            nn.ReLU(inplace=True),
-            layer_init(nn.Conv2d(64, 64, kernel_size=3, stride=1)),
+            layer_init(nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)),
+            # nn.ReLU(inplace=True),
+            # layer_init(nn.Conv2d(64, 64, kernel_size=3, stride=1)),
             nn.ReLU(inplace=True), nn.Flatten()
         )
+        
+        # self.net = nn.Sequential(
+        #     layer_init(nn.Conv2d(c, 32, kernel_size=8, stride=4)),
+        #     nn.ReLU(inplace=True),
+        #     layer_init(nn.Conv2d(32, 64, kernel_size=4, stride=2)),
+        #     nn.ReLU(inplace=True),
+        #     layer_init(nn.Conv2d(64, 64, kernel_size=3, stride=1)),
+        #     nn.ReLU(inplace=True), nn.Flatten()
+        # )
         with torch.no_grad():
             self.output_dim = np.prod(self.net(torch.zeros(1, c, h, w)).shape[1:])
         if not features_only:
+            # assert False
             self.net = nn.Sequential(
                 self.net, layer_init(nn.Linear(self.output_dim, 512)),
                 nn.ReLU(inplace=True),
@@ -167,6 +86,8 @@ class DQN(nn.Module):
                 nn.ReLU(inplace=True)
             )
             self.output_dim = output_dim
+        # print(self.net)
+        # assert False
 
     def forward(
         self,
@@ -176,4 +97,132 @@ class DQN(nn.Module):
     ) -> Tuple[torch.Tensor, Any]:
         r"""Mapping: s -> Q(s, \*)."""
         obs = torch.as_tensor(obs, device=self.device, dtype=torch.float32)
+        
         return self.net(obs), state
+
+
+class C51(DQN):
+    """Reference: A distributional perspective on reinforcement learning.
+
+    For advanced usage (how to customize the network), please refer to
+    :ref:`build_the_network`.
+    """
+
+    def __init__(
+        self,
+        c: int,
+        h: int,
+        w: int,
+        action_shape: Sequence[int],
+        num_atoms: int = 51,
+        device: Union[str, int, torch.device] = "cpu",
+    ) -> None:
+        self.action_num = np.prod(action_shape)
+        super().__init__(c, h, w, [self.action_num * num_atoms], device)
+        self.num_atoms = num_atoms
+
+    def forward(
+        self,
+        obs: Union[np.ndarray, torch.Tensor],
+        state: Optional[Any] = None,
+        info: Dict[str, Any] = {},
+    ) -> Tuple[torch.Tensor, Any]:
+        r"""Mapping: x -> Z(x, \*)."""
+        obs, state = super().forward(obs)
+        obs = obs.view(-1, self.num_atoms).softmax(dim=-1)
+        obs = obs.view(-1, self.action_num, self.num_atoms)
+        return obs, state
+
+
+class Rainbow(DQN):
+    """Reference: Rainbow: Combining Improvements in Deep Reinforcement Learning.
+
+    For advanced usage (how to customize the network), please refer to
+    :ref:`build_the_network`.
+    """
+
+    def __init__(
+        self,
+        c: int,
+        h: int,
+        w: int,
+        action_shape: Sequence[int],
+        num_atoms: int = 51,
+        noisy_std: float = 0.5,
+        device: Union[str, int, torch.device] = "cpu",
+        is_dueling: bool = True,
+        is_noisy: bool = True,
+    ) -> None:
+        super().__init__(c, h, w, action_shape, device, features_only=True)
+        self.action_num = np.prod(action_shape)
+        self.num_atoms = num_atoms
+
+        def linear(x, y):
+            if is_noisy:
+                return NoisyLinear(x, y, noisy_std)
+            else:
+                return nn.Linear(x, y)
+
+        self.Q = nn.Sequential(
+            linear(self.output_dim, 512), nn.ReLU(inplace=True),
+            linear(512, self.action_num * self.num_atoms)
+        )
+        self._is_dueling = is_dueling
+        if self._is_dueling:
+            self.V = nn.Sequential(
+                linear(self.output_dim, 512), nn.ReLU(inplace=True),
+                linear(512, self.num_atoms)
+            )
+        self.output_dim = self.action_num * self.num_atoms
+
+    def forward(
+        self,
+        obs: Union[np.ndarray, torch.Tensor],
+        state: Optional[Any] = None,
+        info: Dict[str, Any] = {},
+    ) -> Tuple[torch.Tensor, Any]:
+        r"""Mapping: x -> Z(x, \*)."""
+        obs, state = super().forward(obs)
+        q = self.Q(obs)
+        q = q.view(-1, self.action_num, self.num_atoms)
+        if self._is_dueling:
+            v = self.V(obs)
+            v = v.view(-1, 1, self.num_atoms)
+            logits = q - q.mean(dim=1, keepdim=True) + v
+        else:
+            logits = q
+        probs = logits.softmax(dim=2)
+        return probs, state
+
+
+class QRDQN(DQN):
+    """Reference: Distributional Reinforcement Learning with Quantile \
+    Regression.
+
+    For advanced usage (how to customize the network), please refer to
+    :ref:`build_the_network`.
+    """
+
+    def __init__(
+        self,
+        c: int,
+        h: int,
+        w: int,
+        action_shape: Sequence[int],
+        num_quantiles: int = 200,
+        device: Union[str, int, torch.device] = "cpu",
+    ) -> None:
+        self.action_num = np.prod(action_shape)
+        super().__init__(c, h, w, [self.action_num * num_quantiles], device)
+        self.num_quantiles = num_quantiles
+
+    def forward(
+        self,
+        obs: Union[np.ndarray, torch.Tensor],
+        state: Optional[Any] = None,
+        info: Dict[str, Any] = {},
+    ) -> Tuple[torch.Tensor, Any]:
+        r"""Mapping: x -> Z(x, \*)."""
+        obs, state = super().forward(obs)
+        obs = obs.view(-1, self.action_num, self.num_quantiles)
+        return obs, state
