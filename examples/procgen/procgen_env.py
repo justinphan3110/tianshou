@@ -10,13 +10,8 @@ except ImportError:
     envpool = None
 
 
-def make_procgen_env(task, seed, training_num, test_num, obs_norm):
-    """Wrapper function for Procgen env.
-
-    If EnvPool is installed, it will automatically switch to EnvPool's Procgen env.
-
-    :return: a tuple of (single env, training envs, test envs).
-    """
+def make_procgen_env(task, seed, training_num, test_num, **kwargs):
+    
     if envpool is not None:
         train_envs = env = envpool.make_gymnasium(
             task, num_envs=training_num, seed=seed
@@ -35,9 +30,10 @@ def make_procgen_env(task, seed, training_num, test_num, obs_norm):
         env.seed(seed)
         train_envs.seed(seed)
         test_envs.seed(seed)
-    if obs_norm:
-        # obs norm wrapper
-        train_envs = VectorEnvNormObs(train_envs)
-        test_envs = VectorEnvNormObs(test_envs, update_obs_rms=False)
-        test_envs.set_obs_rms(train_envs.get_obs_rms())
+    # if obs_norm:
+    #     # obs norm wrapper
+    #     train_envs = VectorEnvNormObs(train_envs)
+    #     test_envs = VectorEnvNormObs(test_envs, update_obs_rms=False)
+    #     test_envs.set_obs_rms(train_envs.get_obs_rms())
     return env, train_envs, test_envs
+
