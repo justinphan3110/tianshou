@@ -37,6 +37,7 @@ def get_args():
     parser.add_argument("--step-per-collect", type=int, default=2048)
     parser.add_argument("--repeat-per-collect", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--hidden-size", type=int, default=512)
     parser.add_argument("--training-num", type=int, default=64)
     parser.add_argument("--test-num", type=int, default=10)
     # ppo special
