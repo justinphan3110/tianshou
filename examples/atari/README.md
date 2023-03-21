@@ -1,5 +1,13 @@
 # Atari Environment
 
+## Run With Global Trojan
+
+```[python]
+python3 atari_ppo_with_global_trojan.py --task "PongNoFrameskip-v4" --epoch 40 \
+  --log_name mild_reward_50percentpoison_50epoch --logdir atari_log \
+  --poison_probability 0.50 
+```
+
 ## EnvPool
 
 We highly recommend using envpool to run the following experiments. To install, in a linux machine, type:
