@@ -100,7 +100,7 @@ def test_ppo(args=get_args()):
         unbounded=True,
         device=args.device,
     ).to(args.device)
-    net_c = Net(
+    net_c =Net(
         args.state_shape,
         hidden_sizes=args.hidden_sizes,
         activation=nn.Tanh,

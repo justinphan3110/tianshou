@@ -81,29 +81,31 @@ def test_ppo(args=get_args()):
     args.state_shape = env.observation_space.shape or env.observation_space.n
     args.action_shape = env.action_space.shape or env.action_space.n
     
-    args.max_action = env.action_space.high[0]
+    # args.max_action = env.action_space.high[0]
     print("Observations shape:", args.state_shape)
     print("Actions shape:", args.action_shape)
-    print("Action range:", np.min(env.action_space.low), np.max(env.action_space.high))
     # seed
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     # model
-    net_a = ImpalaCNN(
-        obs_space=args.state_shape,
-        num_outputs=args.action_shape,
+    net_a = Net(
+        args.state_shape,
+        hidden_sizes=args.hidden_sizes,
+        activation=nn.Tanh,
+        device=args.device,
     )
     actor = ActorProb(
         net_a,
         args.action_shape,
-        max_action=args.max_action,
         unbounded=True,
         device=args.device,
     ).to(args.device)
 
-    net_c = ImpalaCNN(
-        obs_space=args.state_shape,
-        num_outputs=args.action_shape,
+    net_c = Net(
+        args.state_shape,
+        hidden_sizes=args.hidden_sizes,
+        activation=nn.Tanh,
+        device=args.device,
     )
     critic = Critic(net_c, device=args.device).to(args.device)
     torch.nn.init.constant_(actor.sigma_param, -0.5)
