@@ -18,9 +18,10 @@ from tianshou.policy import PPOPolicy
 from tianshou.trainer import onpolicy_trainer
 from tianshou.utils import TensorboardLogger, WandbLogger
 from tianshou.utils.net.common import Net
-from tianshou.utils.net.continuous import ActorProb, Critic
+# from tianshou.utils.net.continuous import ActorProb, Critic
+from tianshou.utils.net.discrete import Actor, Critic, IntrinsicCuriosityModule
 
-from policies import ImpalaCNN, DQN
+from policies import ImpalaCNN, DQN, layer_init, scale_obs
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -88,39 +89,60 @@ def test_ppo(args=get_args()):
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     # model
-    net_a = DQN(
-        args.state_shape,
-        hidden_sizes=args.hidden_sizes,
-        activation=nn.Tanh,
-        device=args.device,
-    )
-    actor = ActorProb(
-        net_a,
+    net_cls = scale_obs(DQN) if args.scale_obs else DQN
+    net = net_cls(
+        *args.state_shape,
         args.action_shape,
-        unbounded=True,
         device=args.device,
-    ).to(args.device)
-
-    net_c = DQN(
-        args.state_shape,
-        hidden_sizes=args.hidden_sizes,
-        activation=nn.Tanh,
-        device=args.device,
+        features_only=True,
+        output_dim=args.hidden_size,
+        layer_init=layer_init,
     )
-    critic = Critic(net_c, device=args.device).to(args.device)
-    torch.nn.init.constant_(actor.sigma_param, -0.5)
-    for m in list(actor.modules()) + list(critic.modules()):
-        if isinstance(m, torch.nn.Linear):
-            # orthogonal initialization
-            torch.nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
-            torch.nn.init.zeros_(m.bias)
-    # do last policy layer scaling, this will make initial actions have (close to)
-    # 0 mean and std, and will help boost performances,
-    # see https://arxiv.org/abs/2006.05990, Fig.24 for details
-    for m in actor.mu.modules():
-        if isinstance(m, torch.nn.Linear):
-            torch.nn.init.zeros_(m.bias)
-            m.weight.data.copy_(0.01 * m.weight.data)
+
+    # net_a = Net(
+    #     args.state_shape,
+    #     output_dim=args.hidden_sizes,
+    #     activation=nn.Tanh,
+    #     device=args.device,
+    # )
+    # actor = ActorProb(
+    #     net_a,
+    #     args.action_shape,
+    #     unbounded=True,
+    #     device=args.device,
+    # ).to(args.device)
+
+    # net_c = Net(
+    #     args.state_shape,
+    #     output_dim=args.hidden_sizes,
+    #     activation=nn.Tanh,
+    #     device=args.device,
+    # )
+    # critic = Critic(net_c, device=args.device).to(args.device)
+    # torch.nn.init.constant_(actor.sigma_param, -0.5)
+    # for m in list(actor.modules()) + list(critic.modules()):
+    #     if isinstance(m, torch.nn.Linear):
+    #         # orthogonal initialization
+    #         torch.nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+    #         torch.nn.init.zeros_(m.bias)
+    # # do last policy layer scaling, this will make initial actions have (close to)
+    # # 0 mean and std, and will help boost performances,
+    # # see https://arxiv.org/abs/2006.05990, Fig.24 for details
+    # for m in actor.mu.modules():
+    #     if isinstance(m, torch.nn.Linear):
+    #         torch.nn.init.zeros_(m.bias)
+    #         m.weight.data.copy_(0.01 * m.weight.data)
+
+    net = net_cls(
+        *args.state_shape,
+        args.action_shape,
+        device=args.device,
+        features_only=True,
+        output_dim=args.hidden_size,
+        layer_init=layer_init,
+    )
+    actor = Actor(net, args.action_shape, device=args.device, softmax_output=False)
+    critic = Critic(net, device=args.device)
 
     optim = torch.optim.Adam(
         list(actor.parameters()) + list(critic.parameters()), lr=args.lr, eps=1e-5

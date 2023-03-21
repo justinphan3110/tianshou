@@ -102,6 +102,27 @@ class ImpalaCNN(nn.Module):
         self.load_state_dict(torch.load(model_path))
 
 
+def layer_init(
+    layer: nn.Module, std: float = np.sqrt(2), bias_const: float = 0.0
+) -> nn.Module:
+    torch.nn.init.orthogonal_(layer.weight, std)
+    torch.nn.init.constant_(layer.bias, bias_const)
+    return layer
+
+
+def scale_obs(module: Type[nn.Module], denom: float = 255.0) -> Type[nn.Module]:
+
+    class scaled_module(module):
+
+        def forward(
+            self,
+            obs: Union[np.ndarray, torch.Tensor],
+            state: Optional[Any] = None,
+            info: Dict[str, Any] = {}
+        ) -> Tuple[torch.Tensor, Any]:
+            return super().forward(obs / denom, state, info)
+
+    return scaled_module
 
 class DQN(nn.Module):
     """Reference: Human-level control through deep reinforcement learning.
