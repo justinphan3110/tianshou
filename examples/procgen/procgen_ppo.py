@@ -6,8 +6,8 @@ import pprint
 import numpy as np
 import torch
 
-from procgen_env import make_procgen_env, scale_obs, layer_init
-from procgen_policies import DQN
+from procgen_env import make_procgen_env
+from policies import DQN, scale_obs, layer_init
 
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.tensorboard import SummaryWriter
