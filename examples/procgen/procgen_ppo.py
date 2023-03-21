@@ -27,6 +27,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", type=str, default="Ant-v3")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--scale-obs", type=bool, default=True)
     parser.add_argument("--buffer-size", type=int, default=4096)
     parser.add_argument("--hidden-sizes", type=int, nargs="*", default=[64, 64])
     parser.add_argument("--lr", type=float, default=5e-4)
