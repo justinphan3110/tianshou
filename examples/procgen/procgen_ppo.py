@@ -20,7 +20,7 @@ from tianshou.utils import TensorboardLogger, WandbLogger
 from tianshou.utils.net.common import Net
 from tianshou.utils.net.continuous import ActorProb, Critic
 
-from policies import ImpalaCNN
+from policies import ImpalaCNN, DQN
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -88,7 +88,7 @@ def test_ppo(args=get_args()):
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     # model
-    net_a = Net(
+    net_a = DQN(
         args.state_shape,
         hidden_sizes=args.hidden_sizes,
         activation=nn.Tanh,
@@ -101,7 +101,7 @@ def test_ppo(args=get_args()):
         device=args.device,
     ).to(args.device)
 
-    net_c = Net(
+    net_c = DQN(
         args.state_shape,
         hidden_sizes=args.hidden_sizes,
         activation=nn.Tanh,
