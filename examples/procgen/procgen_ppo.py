@@ -111,22 +111,22 @@ def test_ppo(args=get_args()):
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     # define model
-    # net_cls = scale_obs(DQN) if args.scale_obs else DQN
-    # net = net_cls(
-    #     *args.state_shape,
-    #     args.action_shape,
-    #     device=args.device,
-    #     features_only=True,
-    #     output_dim=args.hidden_size,
-    #     layer_init=layer_init,
-    # )
-    # actor = Actor(net, args.action_shape, device=args.device, softmax_output=False)
-    # critic = Critic(net, device=args.device)
+    net_cls = scale_obs(DQN) if args.scale_obs else DQN
+    net = net_cls(
+        *args.state_shape,
+        args.action_shape,
+        device=args.device,
+        features_only=True,
+        output_dim=args.hidden_size,
+        layer_init=layer_init,
+    )
+    actor = Actor(net, args.action_shape, device=args.device, softmax_output=True)
+    critic = Critic(net, device=args.device)
 
-    net_a = Net(args.state_shape, hidden_sizes=args.hidden_sizes, device=args.device)
-    net_c = Net(args.state_shape, hidden_sizes=args.hidden_sizes, device=args.device)
-    actor = Actor(net_a, args.action_shape, device=args.device, softmax_output=False).to(args.device)
-    critic = Critic(net_c, device=args.device).to(args.device)
+    # net_a = Net(args.state_shape, hidden_sizes=args.hidden_sizes, device=args.device)
+    # net_c = Net(args.state_shape, hidden_sizes=args.hidden_sizes, device=args.device)
+    # actor = Actor(net_a, args.action_shape, device=args.device, softmax_output=False).to(args.device)
+    # critic = Critic(net_c, device=args.device).to(args.device)
 
     optim = torch.optim.Adam(
         ActorCritic(actor, critic).parameters(), lr=args.lr, eps=1e-5
